@@ -415,6 +415,76 @@ class DistributedRecorderFacadeTest(unittest.TestCase):
                 coordinator.join(timeout=2.0)
                 self.assertFalse(coordinator.is_alive())
 
+    def test_check_health_raises_fatal_event_when_coordinator_exits_zero(self):
+        recorder = object.__new__(DistributedRecorder)
+        recorder.event_queue = queue.Queue()
+        recorder.fatal_error = None
+        recorder.events = {}
+        recorder.manifests = []
+        recorder.camera_statuses = {}
+        recorder.robot_writer_status = {}
+        recorder.committed_sample_count = 0
+        recorder.process = mock.Mock()
+        recorder.process.is_alive.return_value = False
+        recorder.process.exitcode = 0
+        recorder.event_queue.put(
+            {
+                "type": "fatal",
+                "error": "video_overhead: frame age 51.9 ms exceeds 50 ms",
+            }
+        )
+
+        with self.assertRaises(RecorderError) as ctx:
+            recorder.check_health()
+
+        self.assertIn("frame age 51.9 ms exceeds 50 ms", str(ctx.exception))
+        self.assertNotIn("exited with code", str(ctx.exception))
+
+    def test_check_health_drains_fatal_event_after_coordinator_join(self):
+        recorder = object.__new__(DistributedRecorder)
+        recorder.event_queue = queue.Queue()
+        recorder.fatal_error = None
+        recorder.events = {}
+        recorder.manifests = []
+        recorder.camera_statuses = {}
+        recorder.robot_writer_status = {}
+        recorder.committed_sample_count = 0
+        recorder.process = mock.Mock()
+        recorder.process.is_alive.return_value = False
+        recorder.process.exitcode = 0
+
+        def join(timeout=None):
+            recorder.event_queue.put(
+                {
+                    "type": "fatal",
+                    "error": "video_overhead: frame age 51.9 ms exceeds 50 ms",
+                }
+            )
+
+        recorder.process.join.side_effect = join
+
+        with self.assertRaises(RecorderError) as ctx:
+            recorder.check_health()
+
+        self.assertIn("frame age 51.9 ms exceeds 50 ms", str(ctx.exception))
+        recorder.process.join.assert_called()
+
+    def test_check_health_reports_exit_code_when_coordinator_dies_silently(self):
+        recorder = object.__new__(DistributedRecorder)
+        recorder.event_queue = queue.Queue()
+        recorder.fatal_error = None
+        recorder.events = {}
+        recorder.manifests = []
+        recorder.camera_statuses = {}
+        recorder.robot_writer_status = {}
+        recorder.committed_sample_count = 0
+        recorder.process = mock.Mock()
+        recorder.process.is_alive.return_value = False
+        recorder.process.exitcode = 0
+
+        with self.assertRaisesRegex(RecorderError, "exited with code 0"):
+            recorder.check_health()
+
     def test_committed_count_only_advances_from_coordinator_events(self):
         recorder = object.__new__(DistributedRecorder)
         recorder.event_queue = queue.Queue()

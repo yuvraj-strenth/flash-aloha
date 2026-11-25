@@ -1,0 +1,31 @@
+# One Seeed reBot B601-DM, Damiao MIT, USB-CAN serial bridge, 100 Hz.
+# hardware_yaml is the stack profile (resolved from this file). The URDF path
+# inside that profile stays relative to REBOT_ARM_ROOT.
+# Joint targets are native radians: six arm joints plus the gripper motor.
+schema_version: 1
+task:
+  name: b601_single
+control_freq: 100
+data:
+  directory: ../../../data/b601_single
+robot:
+  type: b601
+  arms:
+    left:
+      model: B601_DM
+      serial_port: /dev/ttyACM0
+      hardware_yaml: ../hardware/b601_dm.yaml
+      # Within the DM URDF limits (joint2 and joint3 cannot go above 0).
+      home_qpos: [0.0, -1.0, -1.2, 0.0, 0.0, 0.0, 0.0]
+      command_timeout_s: 1.0
+      max_feedback_age_s: 0.1
+cameras:
+  names: [video_overhead, video_left]
+camera_settings: {}
+collection:
+  max_duration_seconds: 15
+training:
+  observations: [qpos]
+  outputs: [action]
+  state_dim: 7
+  action_dim: 7

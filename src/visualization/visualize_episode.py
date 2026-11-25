@@ -63,6 +63,8 @@ def default_arx_urdf_path():
 def normalize_robot_type(robot_type):
     if robot_type in {"arx", "arx5"}:
         return "arx"
+    if robot_type == "b601":
+        return "b601"
     raise ValueError(f"Unsupported robot type: {robot_type}")
 
 
@@ -595,7 +597,10 @@ def run_rerun_visualization(
             rr.send_blueprint(rrb.Blueprint(rrb.TimePanel(timeline='episode_time'), auto_views=True))
 
         # Recorded-data plots and camera streams; no robot-specific model is drawn.
-        if normalize_robot_type(robot_type) == "arx":
+        if normalize_robot_type(robot_type) in {"arx", "b601"}:
+            if robot_type == "b601":
+                from hardware.backends.b601 import b601_urdf_path
+                print(f"[→] Using B601 URDF: {b601_urdf_path()}")
             run_arx_data_rerun_visualization(
                 args,
                 qpos,
@@ -842,6 +847,8 @@ def main(args):
     if args.get('data_dir'):
         return visualize_episode_data(args)
     if args.get('review_replay'):
+        if args.get('robot') == 'b601':
+            raise ValueError('B601 replay is src/recording/replay_b601.py')
         return run_review_replay(args)
     robot_type = normalize_robot_type(args["robot"])
     task_name = args["task_name"]

@@ -1,0 +1,8 @@
+# RealSense serial numbers. top is published as video_overhead.
+# wrist is published as video_left. fps is the color stream rate.
+# 640x480 is what the rest of the stack reads unless camera_params.npz
+# saved a different mode for these cameras.
+cameras:
+  top: "410622064950"
+  wrist: "260422272463"
+fps: 30

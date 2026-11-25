@@ -31,16 +31,20 @@ resize).
 The `calibration` section describes one physical setup: the arm model (URDF and the links
 masks can follow), the overhead camera, and each arm with its wrist camera. The state is
 one block per arm in the listed order (its joints, then its gripper), so a single-arm
-setup lists one arm. The shipped files belong to one bimanual ARX setup; projected masks
-are only correct there. Replace them for another setup:
+setup lists one arm. This checkout lists the left arm only, matching the RealSense
+overhead and wrist serials. Projected masks need the measurements below; they are not
+checked in.
 
 | File | Contents | Written by |
 | --- | --- | --- |
-| `<camera>_intri_imgs/<camera>_intrinsics.npy` | Pickled dict with `camera_matrix` and `dist_coeffs` at `image_size` | `python scripts/cameras/camera_int.py --camera_name NAME --width 320 --height 180` |
+| `<camera>_intri_imgs/<camera>_intrinsics.npy` | Pickled dict with `camera_matrix` and `dist_coeffs` at `image_size` | `python scripts/cameras/camera_int.py --camera_name NAME` (RealSense, 640×480) |
 | `robot_<camera>_hand/<camera>_ee_to_camera.npy` | 4x4 pose of the wrist camera in its arm's end-effector frame | `python scripts/setup/calibrate_masking.py wrist-camera --arm ARM` |
 | `head-to-robot_<camera>_hand/head_to_robot_base.npz` | `average_transform`: 4x4 pose of the arm base in the overhead camera frame | `python scripts/setup/calibrate_masking.py overhead --arm ARM` |
 
-Run them in that order for each arm, with the camera servers stopped. The two
+`camera_int.py` captures `video_overhead` and `video_left` from the RealSense serials in
+`src/config/cameras/cam_config.yaml`. There is no right-wrist serial, so `video_right` is
+refused. Calibrate both cameras, then run the two extrinsic steps for the left arm, with
+the camera servers stopped. The two
 `calibrate_masking.py` steps are operator-run: the arm homes, then stays in
 gravity-compensated passive mode while you guide it by hand to view a checkerboard
 (`s` saves a view, `q` finishes), and returns home. Ctrl+C or any failure enters damping

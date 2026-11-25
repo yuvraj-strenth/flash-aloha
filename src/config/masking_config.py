@@ -5,7 +5,7 @@ selects another) declares everything ``utils.masking.Masker`` needs, so masks ar
 rather than code. This module only reads and validates it: no torch, numpy or OpenCV.
 
     calibration:
-      image_size: [320, 180]        # width, height the intrinsics were calibrated at
+      image_size: [640, 480]        # width, height the intrinsics were calibrated at
       urdf: ../../src/hardware/arx5-sdk/models/X5.urdf
       links: {wrist: link6, end_effector: eef_link}
       overhead_camera: {name: video_overhead, intrinsics: <file>}

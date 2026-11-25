@@ -62,7 +62,7 @@ class ManagedArm:
     Failures (feedback, commands, watchdog expiry) put the arm into damping;
     see hardware.safe_exit. Only an arm that cannot be damped is disabled.
     """
-    def __init__(self, description, *, command_timeout_s=0.5, max_feedback_age_s=0.1,
+    def __init__(self, description, *, command_timeout_s=1.0, max_feedback_age_s=0.1,
                  clock=time.monotonic):
         self._description = description
         self._timeout = positive_seconds(command_timeout_s, 'command_timeout_s')

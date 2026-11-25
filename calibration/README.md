@@ -1,8 +1,9 @@
-# Calibration files (examples)
+# Calibration files
 
-Everything in this directory was measured on one physical setup and is included only
-as an example of the expected files and formats. **None of it is valid for another
-robot, camera or mounting: recalibrate before use.**
+Measured files are not checked in. The cameras on this rig are the RealSense
+serials in `src/config/cameras/cam_config.yaml`, and capture runs at 640×480.
+Produce the files below for this robot before a projected mask, a tuned exposure,
+or a saved start pose is used.
 
 | File | What it is | How to produce your own |
 | --- | --- | --- |

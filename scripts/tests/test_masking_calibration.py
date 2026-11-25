@@ -94,6 +94,17 @@ def test_tool_solves_both_calibrations_from_saved_views(tmp_path, capsys):
     document.pop('definitions', None)
     document['calibration']['urdf'] = load_masking_config()['calibration']['urdf']
     (root / 'masking.yaml').write_text(yaml.safe_dump(document, sort_keys=False))
+    width, height = document['calibration']['image_size']
+    matrix = np.array([[float(width), 0, width / 2], [0, float(width), height / 2], [0, 0, 1]])
+
+    def write_intrinsics(relative):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(path, {'camera_matrix': matrix, 'dist_coeffs': np.zeros(5)})
+
+    write_intrinsics(document['calibration']['overhead_camera']['intrinsics'])
+    for arm_config in document['calibration']['arms'].values():
+        write_intrinsics(arm_config['intrinsics'])
     setup = load_masking_config(root / 'masking.yaml')['calibration']
     arm = setup['arms']['left']
     scale = 4  # views are captured at the camera's resolution and resized to the calibrated size
@@ -117,8 +128,8 @@ def test_tool_solves_both_calibrations_from_saved_views(tmp_path, capsys):
                 cv2.imwrite(str(directories['overhead'] / f'pose_{index}_image.png'),
                             render_board(T_overhead_board, overhead_matrix, size))
 
-    Path(arm['camera_on_end_effector']).unlink()
-    Path(arm['base_in_overhead']).unlink()
+    Path(arm['camera_on_end_effector']).unlink(missing_ok=True)
+    Path(arm['base_in_overhead']).unlink(missing_ok=True)
     write_views(calibrate_masking.view_directories(arm, 'wrist-camera'), 12, seed=1)
     common = ['--arm', 'left', '--masking-config', str(root / 'masking.yaml'), '--solve-only']
     assert calibrate_masking.main(['wrist-camera', *common]) == 0
@@ -137,7 +148,7 @@ def test_tool_solves_both_calibrations_from_saved_views(tmp_path, capsys):
 
 def test_capture_uses_the_existing_arx_setup_and_the_safe_exit():
     import inspect
-    source = inspect.getsource(calibrate_masking.capture)
+    source = inspect.getsource(calibrate_masking.capture_arx)
     # The controller, passive mode and home move are the audited ARX setup tool's; failures damp until 'h'.
     assert 'from calibrate_arx_arm import build_controller, load_arx5_interface, safe_home, set_passive_mode' in source
     assert 'with damping_exit(lambda: ARXDamping([controller])):' in source

@@ -40,7 +40,7 @@ only when you intend to operate the cameras.
 At 100 fps a laptop that lets its CPUs sleep in deep idle states (C6-C10,
 ~170-230 us to wake) can occasionally service the UVC camera too late; the
 driver then drops a burst of frames and recording fails with a stale-frame
-error (`frame age ... exceeds 50 ms`). Each camera server therefore holds a
+error (`frame age ... exceeds 100 ms`). Each camera server therefore holds a
 PM QoS limit of 20 us through `/dev/cpu_dma_latency` while it runs
 (`--cpu-latency-us`, negative disables). The kernel releases it when the server
 exits. Capture, timestamps and timing validation are unchanged.

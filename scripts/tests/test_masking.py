@@ -2,8 +2,6 @@
 
 Offline, no robot.
 """
-import shutil
-
 import numpy as np
 import pytest
 import torch
@@ -36,22 +34,80 @@ def images(value=200, size=(W, H)):
     return {name: np.full((size[1], size[0], 3), value, np.uint8) for name in CAMERAS}
 
 
+def _look_down(base_xy, height=1.6):
+    """Overhead camera looking down, with this arm's base at ``base_xy`` in the world."""
+    transform = np.eye(4)
+    transform[:3, :3] = np.diag([1.0, -1.0, -1.0])
+    origin = np.array([base_xy[0], base_xy[1], 0.0])
+    transform[:3, 3] = transform[:3, :3] @ (origin - np.array([0.0, 0.0, height]))
+    return transform
+
+
+# The two bases sit apart under one overhead camera, so each wrist lands in its own rectangle.
+LEFT_IN_OVERHEAD = _look_down((-0.15, 0.15))
+RIGHT_IN_OVERHEAD = _look_down((0.08, -0.30))
+
+
+def write_synthetic_calibration(root, calibration):
+    """Intrinsics and extrinsics that project the test poses into a 320x180 image."""
+    width, height = calibration['image_size']
+    matrix = np.array([[280.0, 0.0, width / 2.0], [0.0, 280.0, height / 2.0], [0.0, 0.0, 1.0]])
+    bases = {'left': LEFT_IN_OVERHEAD, 'right': RIGHT_IN_OVERHEAD}
+
+    def save_intrinsics(relative):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(path, {'camera_matrix': matrix, 'dist_coeffs': np.zeros(5)})
+
+    save_intrinsics(calibration['overhead_camera']['intrinsics'])
+    for name, arm in calibration['arms'].items():
+        save_intrinsics(arm['intrinsics'])
+        ee_path = root / arm['camera_on_end_effector']
+        ee_path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(ee_path, np.eye(4))
+        base_path = root / arm['base_in_overhead']
+        base_path.parent.mkdir(parents=True, exist_ok=True)
+        transform = bases.get(name, np.eye(4))
+        np.savez(base_path, average_transform=transform, individual_transforms=transform.reshape(1, 4, 4))
+
+
 def custom_config(tmp_path, edit):
-    """A copy of the shipped masking config and calibration, edited before it is written."""
+    """A bimanual masking config with synthetic calibration, edited before it is written.
+
+    The shipped config is the left arm only and has no measurements. Geometry tests keep
+    both arms here, at the 320x180 size these cases draw.
+    """
     root = tmp_path / 'masking'
-    shutil.copytree(DEFAULT_MASKING_CONFIG.parent, root)
-    document = yaml.safe_load((root / 'masking.yaml').read_text())
+    root.mkdir(parents=True, exist_ok=True)
+    document = yaml.safe_load(DEFAULT_MASKING_CONFIG.read_text())
     document.pop('definitions', None)
-    document['calibration']['urdf'] = load_masking_config()['calibration']['urdf']
+    calibration = document['calibration']
+    calibration['urdf'] = str(load_masking_config()['calibration']['urdf'])
+    calibration['image_size'] = [W, H]
+    calibration['arms']['right'] = {
+        'wrist_camera': 'video_right',
+        'intrinsics': 'video_right_intri_imgs/video_right_intrinsics.npy',
+        'camera_on_end_effector': 'robot_video_right_hand/video_right_ee_to_camera.npy',
+        'base_in_overhead': 'head-to-robot_video_right_hand/head_to_robot_base.npz',
+    }
+    write_synthetic_calibration(root, calibration)
     edit(document)
     (root / 'masking.yaml').write_text(yaml.safe_dump(document, sort_keys=False))
     return root / 'masking.yaml'
 
 
+@pytest.fixture
+def bimanual_masking(tmp_path):
+    return custom_config(tmp_path, lambda document: None)
+
+
 def test_shipped_strategies_are_defined_in_the_masking_config():
     assert masking_strategy_names() == SHIPPED
     assert require_masking_strategy(None) is None
-    for strategy in SHIPPED:
+    calibration = load_masking_config()['calibration']
+    assert calibration['image_size'] == [640, 480]
+    assert list(calibration['arms']) == ['left']
+    for strategy in ('prioproceptive', 'arm_cameras', 'overhead_left_90px', 'left_right_overhead'):
         assert Masker(strategy).strategy == strategy
     for check in (require_masking_strategy, Masker):
         with pytest.raises(ValueError, match='Unknown masking strategy'):
@@ -59,7 +115,8 @@ def test_shipped_strategies_are_defined_in_the_masking_config():
     with pytest.raises(ValueError, match='Remote serving cannot omit the mask'):
         require_unmasked_for_serving({'task_config': {'masking_strategy': 'end_effector'}})
     require_unmasked_for_serving({'task_config': {}})
-    assert Masker('end_effector').is_projected and not Masker('end_effector').masks_proprioception
+    with pytest.raises(FileNotFoundError, match='calibration files'):
+        Masker('end_effector')  # the shipped measurements are not checked in
     assert Masker('prioproceptive').masks_proprioception and not Masker('prioproceptive').is_projected
 
 
@@ -70,8 +127,8 @@ def test_no_strategy_returns_the_inputs_untouched():
 
 
 @pytest.mark.parametrize('strategy', [s for s in SHIPPED if s != 'prioproceptive'])
-def test_masks_never_modify_their_inputs_and_do_not_depend_on_call_order(strategy):
-    masker = Masker(strategy)
+def test_masks_never_modify_their_inputs_and_do_not_depend_on_call_order(strategy, bimanual_masking):
+    masker = Masker(strategy, bimanual_masking)
     frames, qpos = images(), torch.from_numpy(REACHING)
     first, _ = masker.mask(frames, qpos)
     assert all((frames[name] == 200).all() for name in CAMERAS)  # e.g. read-only frame-store arrays
@@ -82,8 +139,8 @@ def test_masks_never_modify_their_inputs_and_do_not_depend_on_call_order(strateg
     assert any((first[name] == 0).any() for name in CAMERAS)
 
 
-def test_overhead_rectangles_follow_each_wrist():
-    masker = Masker('end_effector')
+def test_overhead_rectangles_follow_each_wrist(bimanual_masking):
+    masker = Masker('end_effector', bimanual_masking)
     for qpos in (RETRACTED, REACHING):
         wrists = masker.link_pixels(qpos, (W, H))
         polygons = dict(zip(('left', 'right'), masker.polygons(qpos, 'video_overhead', (W, H))))
@@ -103,8 +160,8 @@ def test_overhead_rectangles_follow_each_wrist():
     assert np.linalg.norm(polygon_shift - wrist_shift) < 0.35 * np.linalg.norm(wrist_shift)
 
 
-def test_overhead_mask_is_the_filled_rectangles_and_the_state_is_kept():
-    masker = Masker('end_effector')
+def test_overhead_mask_is_the_filled_rectangles_and_the_state_is_kept(bimanual_masking):
+    masker = Masker('end_effector', bimanual_masking)
     masked, qpos = masker.mask(images(), torch.from_numpy(REACHING))
     expected = np.full((H, W, 3), 200, np.uint8)
     for points in masker.polygons(REACHING, 'video_overhead', (W, H)):
@@ -115,18 +172,20 @@ def test_overhead_mask_is_the_filled_rectangles_and_the_state_is_kept():
 
 
 @pytest.mark.parametrize('scale', [2, 4])
-def test_masks_are_resolution_independent(scale):
-    masker, size = Masker('end_effector'), (W * scale, H * scale)
+def test_masks_are_resolution_independent(scale, bimanual_masking):
+    masker, size = Masker('end_effector', bimanual_masking), (W * scale, H * scale)
     for camera in CAMERAS:
         for small, large in zip(masker.polygons(REACHING, camera, (W, H)), masker.polygons(REACHING, camera, size)):
             visible = (np.abs(small) < 2900).all(axis=1)  # corners clamped far off-screen do not scale
+            if not visible.any():
+                continue
             assert np.abs(large[visible] - small[visible] * scale).max() <= scale  # integer rounding only
     # The masked fraction of the image is the same at every resolution, and regions are fractions.
     low, _ = masker.mask(images(), REACHING)
     high, _ = masker.mask(images(size=size), REACHING)
     for camera in CAMERAS:
         assert abs((low[camera] == 0).mean() - (high[camera] == 0).mean()) < 0.02
-    columns, _ = Masker('left_right_overhead').mask(images(size=size), RETRACTED)
+    columns, _ = Masker('left_right_overhead', bimanual_masking).mask(images(size=size), RETRACTED)
     assert not columns['video_overhead'][:, :90 * scale].any() and not columns['video_overhead'][:, 235 * scale:].any()
     assert (columns['video_overhead'][:, 90 * scale:235 * scale] == 200).all()
     # A non-uniform resize (another aspect ratio) rescales each axis by its own factor.
@@ -135,9 +194,9 @@ def test_masks_are_resolution_independent(scale):
         assert np.abs(stretched[:, 0] - small[:, 0] * 2).max() <= 2 and np.abs(stretched[:, 1] - small[:, 1]).max() <= 1
 
 
-def test_masks_accept_frames_that_are_views():
+def test_masks_accept_frames_that_are_views(bimanual_masking):
     # Readers hand out channel-flipped or strided views; the mask is the same as for a contiguous copy.
-    masker = Masker('end_effector')
+    masker = Masker('end_effector', bimanual_masking)
     contiguous = {name: np.random.default_rng(1).integers(1, 255, (H, W, 3), dtype=np.uint8) for name in CAMERAS}
     flipped = {name: np.ascontiguousarray(frame[..., ::-1])[..., ::-1] for name, frame in contiguous.items()}
     assert not flipped['video_overhead'].flags['C_CONTIGUOUS']
@@ -147,16 +206,16 @@ def test_masks_accept_frames_that_are_views():
         np.testing.assert_array_equal(got[name], want[name])
 
 
-def test_fixed_and_camera_masks():
+def test_fixed_and_camera_masks(bimanual_masking):
     frames = images()
-    left, _ = Masker('overhead_left_90px').mask(frames, RETRACTED)
+    left, _ = Masker('overhead_left_90px', bimanual_masking).mask(frames, RETRACTED)
     assert not left['video_overhead'][:, :90].any() and (left['video_overhead'][:, 90:] == 200).all()
-    both, _ = Masker('left_right_overhead').mask(frames, RETRACTED)
+    both, _ = Masker('left_right_overhead', bimanual_masking).mask(frames, RETRACTED)
     assert not both['video_overhead'][:, 235:].any() and (both['video_overhead'][:, 90:235] == 200).all()
-    arms, qpos = Masker('arm_cameras_and_prioproceptive').mask(frames, torch.from_numpy(RETRACTED))
+    arms, qpos = Masker('arm_cameras_and_prioproceptive', bimanual_masking).mask(frames, torch.from_numpy(RETRACTED))
     assert not arms['video_left'].any() and not arms['video_right'].any() and (arms['video_overhead'] == 200).all()
     assert not qpos.any()
-    block, _ = Masker('moving_block').mask(frames, RETRACTED)
+    block, _ = Masker('moving_block', bimanual_masking).mask(frames, RETRACTED)
     assert not block['video_overhead'][:H // 4].any() and (block['video_overhead'][H // 4:] == 200).all()
 
 
@@ -171,7 +230,8 @@ def test_a_custom_config_defines_new_strategies_cameras_and_a_single_arm(tmp_pat
             'hide_other_arm': [{'project': {'camera': 'wrist', 'frame': 'end_effector', 'arm': 'other',
                                             'corners': [[0, 0, 0], [0.1, 0, 0], [0, 0.1, 0]]}}],
             'bottom_strip': [{'region': {'camera': 'extra_camera', 'x': [0, 1], 'y': [0.8, 1]}}, {'blank': 'video_right'}]}
-    path = custom_config(tmp_path, edit)
+    base = custom_config(tmp_path / 'base', lambda document: None)
+    path = custom_config(tmp_path / 'single', edit)
     assert masking_strategy_names(path) == ('my_wrist_disc', 'hide_other_arm', 'bottom_strip')
     single = RETRACTED[7:]  # the one arm's seven values
     disc = Masker('my_wrist_disc', path)
@@ -183,7 +243,7 @@ def test_a_custom_config_defines_new_strategies_cameras_and_a_single_arm(tmp_pat
     assert 0 < (masked['video_overhead'] == 0).all(axis=2).mean() < 0.2
     # The same wrist as in the bimanual config: the single-arm state indexes its own arm.
     np.testing.assert_array_equal(disc.link_pixels(single, (W, H))['right'],
-                                  Masker('end_effector').link_pixels(RETRACTED, (W, H))['right'])
+                                  Masker('end_effector', base).link_pixels(RETRACTED, (W, H))['right'])
     # With one arm there is no "other" arm: that operation draws nothing.
     untouched, _ = Masker('hide_other_arm', path).mask(images(), single)
     assert all((untouched[name] == 200).all() for name in CAMERAS)
@@ -191,7 +251,7 @@ def test_a_custom_config_defines_new_strategies_cameras_and_a_single_arm(tmp_pat
     assert not strip['extra_camera'][80:].any() and (strip['extra_camera'][:80] == 9).all()
     assert not strip['video_right'].any()
     with pytest.raises(ValueError, match="declares this task's arms"):
-        Masker('end_effector').mask(images(), single)  # the bimanual config needs both arms' state
+        Masker('end_effector', base).mask(images(), single)  # the bimanual config needs both arms' state
 
 
 def test_the_environment_selects_the_masking_config(tmp_path, monkeypatch):
@@ -221,12 +281,13 @@ def test_invalid_masking_configs_fail_when_loaded(tmp_path, broken, message):
 
 
 def test_checkpoint_contract_pins_the_strategy_definition_and_calibration(tmp_path):
-    contract = masking_contract('end_effector')
-    assert contract == Masker('end_effector').contract() and contract['strategy'] == 'end_effector'
-    assert require_masking_contract(contract, 'end_effector') == contract
+    original = custom_config(tmp_path / 'original', lambda document: None)
+    contract = masking_contract('end_effector', original)
+    assert contract == Masker('end_effector', original).contract() and contract['strategy'] == 'end_effector'
+    assert require_masking_contract(contract, 'end_effector', original) == contract
     assert require_masking_contract(None, None) is None
     with pytest.raises(ValueError, match='stores no masking contract'):
-        require_masking_contract(None, 'end_effector')
+        require_masking_contract(None, 'end_effector', original)
     with pytest.raises(ValueError, match='but no masking strategy'):
         require_masking_contract(contract, None)
     # A changed rectangle, or a recalibrated file, is another mask: deployment refuses it.
@@ -270,7 +331,8 @@ def dataset(path, strategy, **kwargs):
 
 
 @pytest.mark.parametrize('size', [(W, H), (160, 90)])
-def test_training_samples_carry_the_mask_of_their_own_row_at_the_policy_resolution(tmp_path, size):
+def test_training_samples_carry_the_mask_of_their_own_row_at_the_policy_resolution(tmp_path, size, monkeypatch):
+    monkeypatch.setenv(masking_config.ENVIRONMENT_VARIABLE, str(custom_config(tmp_path / 'mask', lambda document: None)))
     path = tmp_path / 'episode.zarr'
     qpos = write_bimanual_episode(path)
     resize = {} if size == (W, H) else dict(width=size[0], height=size[1])

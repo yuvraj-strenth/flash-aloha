@@ -8,14 +8,17 @@ Writes the two per-arm files the masking config (calibration/masking/masking.yam
     # 2. Arm base in the overhead camera: the board visible to the overhead and wrist cameras.
     python scripts/setup/calibrate_masking.py overhead --arm left
 
-The arm is homed, then put in gravity-compensated passive mode: guide it by hand, press 's'
+The default arm is the reBot B601-DM on the Damiao serial adapter /dev/ttyACM0 (the same
+connection lerobot-calibrate uses). --backend arx is the SocketCAN L5 path. The arm is
+homed, then put in gravity-compensated passive mode: guide it by hand, press 's'
 in the camera window to save a view and 'q' to finish; it then returns home. Ctrl+C or any
 failure enters damping until 'h' homes the arm (docs/safe_exit.md). Stop the camera servers
-first: this tool opens the camera devices itself. --solve-only recomputes from saved views
+first: this tool opens the RealSense color streams itself, at 640x480. video_overhead is the
+top serial and video_left is the wrist serial. --solve-only recomputes from saved views
 without connecting to the arm or cameras.
 
-Intrinsics come first (scripts/cameras/camera_int.py, at the masking config's image size).
-The arm model, links, cameras, image size and output files are read from the masking config.
+Intrinsics come first (scripts/cameras/camera_int.py, at 640x480). The arm model, links,
+cameras, image size and output files are read from the masking config.
 """
 import argparse
 import sys
@@ -45,12 +48,13 @@ def view_directories(arm_config, mode):
     return {'wrist': root / 'robot', 'overhead': root / 'head'}
 
 
-def capture_views(controller, chain, cameras, directories, count):
+def capture_views(read_joints, chain, cameras, directories, count):
     """Show the cameras; 's' saves every camera's frame and the arm's end-effector pose, 'q' finishes."""
     from utils.masking import get_fk_matrix
     for directory in directories.values():
         directory.mkdir(parents=True, exist_ok=True)
     saved = 0
+    joint_count = chain.getNrOfJoints()
     while saved < count:
         frames = {}
         for name, capture in cameras.items():
@@ -63,7 +67,7 @@ def capture_views(controller, chain, cameras, directories, count):
                                       for frame in frames.values()]))
         key = cv2.waitKey(20) & 0xFF
         if key == ord('s'):
-            joints = np.asarray(controller.get_joint_state().pos()).copy()
+            joints = np.asarray(read_joints(), dtype=float).reshape(-1)[:joint_count]
             for name, frame in frames.items():
                 cv2.imwrite(str(directories[name] / f'pose_{saved}_image.png'), frame)
             np.save(directories['wrist'] / f'pose_{saved}_transform.npy', get_fk_matrix(joints, chain))
@@ -74,15 +78,28 @@ def capture_views(controller, chain, cameras, directories, count):
     return saved
 
 
-def capture(args, setup, arm_config, directories):
-    """Home, passive gravity compensation, capture, home; every failure goes through the safe exit."""
-    from calibrate_arx_arm import build_controller, load_arx5_interface, safe_home, set_passive_mode
-    from hardware.safe_exit import ARXDamping, damping_exit
-    from utils.masking import create_kdl_chain
-    chain = create_kdl_chain(setup['urdf'], setup['links']['end_effector'])
+def camera_devices(args, setup, arm_config):
     devices = {'wrist': arm_config['wrist_camera']}
     if args.mode == 'overhead':
         devices['overhead'] = setup['overhead_camera']['name']
+    return devices
+
+
+def open_cameras(devices):
+    from camera_utils.camera_server_realsense import RealSenseColorCapture
+    return {name: RealSenseColorCapture(device) for name, device in devices.items()}
+
+
+def finish_cameras(cameras):
+    for camera in cameras.values():
+        camera.release()
+    cv2.destroyAllWindows()
+
+
+def capture_arx(args, setup, arm_config, directories, chain):
+    """Home, passive gravity compensation, capture, home; every failure goes through the safe exit."""
+    from calibrate_arx_arm import build_controller, load_arx5_interface, safe_home, set_passive_mode
+    from hardware.safe_exit import ARXDamping, damping_exit
     can_interface = args.can_interface or DEFAULT_CAN_INTERFACES[args.arm]
     arx5 = load_arx5_interface()
     _, _, controller = build_controller(arx5, args.model, can_interface, args.controller_fps)
@@ -93,12 +110,9 @@ def capture(args, setup, arm_config, directories):
         with damping_exit(lambda: ARXDamping([controller])):
             controller.reset_to_home()
             set_passive_mode(controller)
-            for name, device in devices.items():
-                cameras[name] = cv2.VideoCapture(f'/dev/{device}')
-                if not cameras[name].isOpened():
-                    raise RuntimeError(f'Cannot open /dev/{device}; stop the camera servers first')
+            cameras = open_cameras(camera_devices(args, setup, arm_config))
             print("Guide the arm by hand. 's' saves a view, 'q' finishes.")
-            saved = capture_views(controller, chain, cameras, directories, args.poses)
+            saved = capture_views(lambda: controller.get_joint_state().pos(), chain, cameras, directories, args.poses)
             print(f'{saved} views saved')
     except KeyboardInterrupt:
         failed = True
@@ -107,12 +121,61 @@ def capture(args, setup, arm_config, directories):
         failed = True
         raise
     finally:
-        for camera in cameras.values():
-            camera.release()
-        cv2.destroyAllWindows()
+        finish_cameras(cameras)
         if not failed:  # The failure exit already homed (or disabled in place).
             safe_home(controller)
     return not failed
+
+
+def capture_b601(args, setup, arm_config, directories, chain):
+    """Same capture on the reBot B601-DM, through its Damiao serial adapter."""
+    from hardware.runtime import RuntimeDamping
+    from hardware.safe_exit import damping_exit
+    from recording.b601_session import load_task, open_runtime
+    task_path = args.task_config or str(Path(__file__).resolve().parents[2] / 'src/config/tasks/b601_single.yaml')
+    hardware = open_runtime(load_task(task_path))
+    if args.arm not in hardware.arms:
+        raise RuntimeError(f'{task_path} has no {args.arm} arm')
+    arm = hardware.arms[args.arm]
+    if args.serial_port:
+        arm._serial = args.serial_port
+    arm.set_compliant(True)
+    print(f'Connecting the {args.arm} B601 on {arm._serial}.')
+    print("Ctrl+C or any failure: damping, then 'h' returns the arm home.")
+    cameras, failed = {}, False
+    try:
+        hardware.connect()
+        with damping_exit(lambda: RuntimeDamping(hardware) if hardware.live_arms() else None):
+            arm.home()
+            arm.set_compliant(True)
+            cameras = open_cameras(camera_devices(args, setup, arm_config))
+            print("Guide the arm by hand. 's' saves a view, 'q' finishes.")
+
+            def read_joints():
+                return hardware.read_state()['qpos']
+
+            saved = capture_views(read_joints, chain, cameras, directories, args.poses)
+            print(f'{saved} views saved')
+    except KeyboardInterrupt:
+        failed = True
+        print('\nCalibration interrupted.')
+    except BaseException:
+        failed = True
+        raise
+    finally:
+        finish_cameras(cameras)
+        if not failed and hardware.live_arms():
+            arm.home()
+        hardware.close()
+    return not failed
+
+
+def capture(args, setup, arm_config, directories):
+    from utils.masking import create_kdl_chain
+    chain = create_kdl_chain(setup['urdf'], setup['links']['end_effector'])
+    if args.backend == 'b601':
+        return capture_b601(args, setup, arm_config, directories, chain)
+    return capture_arx(args, setup, arm_config, directories, chain)
 
 
 def load_views(directory, size):
@@ -164,13 +227,17 @@ def build_parser():
     parser.add_argument('mode', choices=('wrist-camera', 'overhead'))
     parser.add_argument('--arm', required=True, help='Arm name in the masking config (e.g. left, right)')
     parser.add_argument('--masking-config', help='Masking config YAML (default: calibration/masking/masking.yaml)')
-    parser.add_argument('--can-interface', help='CAN interface (default: can0 for left, can1 for right)')
+    parser.add_argument('--backend', choices=('b601', 'arx'), default='b601',
+                        help='b601 uses the Damiao serial adapter; arx uses SocketCAN')
+    parser.add_argument('--serial-port', help='B601 Damiao adapter (default: the task YAML, /dev/ttyACM0)')
+    parser.add_argument('--task-config', help='B601 task YAML (default: src/config/tasks/b601_single.yaml)')
+    parser.add_argument('--can-interface', help='ARX CAN interface (default: can0 for left, can1 for right)')
     parser.add_argument('--model', default='L5', help='ARX SDK model name')
     parser.add_argument('--controller-fps', type=float, default=500.0, help='ARX controller rate')
     parser.add_argument('--poses', type=int, help='Views to capture (default: 15 wrist-camera, 5 overhead)')
     parser.add_argument('--board-columns', type=int, default=10, help='Checkerboard inner corners per row')
     parser.add_argument('--board-rows', type=int, default=7, help='Checkerboard inner corners per column')
-    parser.add_argument('--square-size', type=float, default=0.025, help='Checkerboard square size in metres')
+    parser.add_argument('--square-size', type=float, default=0.020, help='Checkerboard square size in metres')
     parser.add_argument('--solve-only', action='store_true', help='Recompute from saved views; no arm or camera')
     return parser
 
@@ -181,7 +248,7 @@ def main(argv=None):
     if setup is None or args.arm not in setup['arms']:
         raise SystemExit(f'The masking config declares no arm {args.arm!r}')
     arm_config = setup['arms'][args.arm]
-    if args.can_interface is None and args.arm not in DEFAULT_CAN_INTERFACES:
+    if args.backend == 'arx' and args.can_interface is None and args.arm not in DEFAULT_CAN_INTERFACES:
         raise SystemExit('--can-interface is required for this arm name')
     args.poses = args.poses or (15 if args.mode == 'wrist-camera' else 5)
     if args.poses < 3:

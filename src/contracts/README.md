@@ -68,7 +68,7 @@ must not start camera readers, a recorder, a policy server, or a robot controlle
   future-time tolerance. Missing, stale, skewed, or unbound observations fail closed.
 
 [Camera timing](../camera_utils/camera_timing.py) owns `TimingLimits`. Current
-defaults are 50 ms maximum age, 50 ms camera skew, and 5 ms future tolerance;
+defaults are 100 ms maximum age, 50 ms camera skew, and 5 ms future tolerance;
 `CAMERA_MAX_AGE_MS`, `CAMERA_MAX_SKEW_MS`, and `CAMERA_MAX_FUTURE_MS` configure them.
 These are validation limits, not evidence of hardware synchronization or a
 policy's measured delay tolerance. Validate the selected observation at its

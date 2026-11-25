@@ -5,10 +5,11 @@
 calibration:
   # Width and height of the images the intrinsics were calibrated at. Masks are drawn at
   # whatever resolution the policy uses: the intrinsics are rescaled to it.
-  image_size: [320, 180]
+  image_size: [640, 480]
   # Arm model used for forward kinematics, and the links masks can follow.
-  urdf: ../../src/hardware/arx5-sdk/models/X5.urdf
-  links: {wrist: link6, end_effector: eef_link}
+  # The connected arm is the reBot B601-DM. This file is the vendor URDF, resolved from REBOT_ARM_ROOT.
+  urdf: ../../../strenth-flow/vendor/reBotArm_control_py/urdf/DM/urdf/ReBot_Arm_DM.urdf
+  links: {wrist: link6, end_effector: end_link}
   joints_per_arm: 6            # each arm's state is these joints followed by its gripper
   overhead_camera:
     name: video_overhead
@@ -19,12 +20,7 @@ calibration:
       intrinsics: video_left_intri_imgs/video_left_intrinsics.npy
       camera_on_end_effector: robot_video_left_hand/video_left_ee_to_camera.npy
       base_in_overhead: head-to-robot_video_left_hand/head_to_robot_base.npz
-      mirror_y: true           # corners below are written for the right arm
-    right:
-      wrist_camera: video_right
-      intrinsics: video_right_intri_imgs/video_right_intrinsics.npy
-      camera_on_end_effector: robot_video_right_hand/video_right_ee_to_camera.npy
-      base_in_overhead: head-to-robot_video_right_hand/head_to_robot_base.npz
+      mirror_y: true           # corners below are written for an unmirrored arm
 
 # Reusable operations (YAML anchors). Corners are metres in a frame located at the named
 # link, with the axes of that arm's base.

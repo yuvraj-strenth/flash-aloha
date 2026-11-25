@@ -44,8 +44,8 @@ if ACT_SRC not in sys.path:
 from camera_utils.camera_server import V4L2MmapCamera
 
 
-DEFAULT_WIDTH = 1280
-DEFAULT_HEIGHT = 720
+DEFAULT_WIDTH = 640
+DEFAULT_HEIGHT = 480
 DEFAULT_FPS = 60
 # TORSO_DEFAULT_WIDTH = 1280
 # TORSO_DEFAULT_HEIGHT = 800
@@ -1088,13 +1088,13 @@ def main() -> int:
         "--width",
         type=int,
         default=None,
-        help="Capture width. Defaults to 1280 for all cameras.",
+        help="Capture width. Defaults to 640 for all cameras.",
     )
     parser.add_argument(
         "--height",
         type=int,
         default=None,
-        help="Capture height. Defaults to 720.",
+        help="Capture height. Defaults to 480.",
     )
     parser.add_argument(
         "--fps",

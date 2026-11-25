@@ -205,8 +205,11 @@ class TaskConfig:
             _task_config_path=str(self.source))
         for key in ('execution_steps', 'runtime', 'inference'):
             result.pop(key, None)
-        result['can_interface_left'] = arms[side if single else 'left']['can_interface']
-        result['can_interface_right'] = None if single else arms['right']['can_interface']
+        def bus(arm):
+            return arm['can_interface'] if 'can_interface' in arm else arm['serial_port']
+        active = side if single else 'left'
+        result['can_interface_left'] = bus(arms[active])
+        result['can_interface_right'] = None if single else bus(arms['right'])
         result['single_arm_can'] = result['can_interface_left'] if single else None
         result['robot_contract'] = self.robot_contract
         result['hardware_config'] = doc['robot']
@@ -298,25 +301,48 @@ def load_task_config(path, *, overrides=None, defaults_path=None):
     document['data']['directory'] = _path(document['data']['directory'], path.parent, 'data.directory')
     robot = document['robot']
     _keys(robot, ('type', 'arms'), ('type', 'arms'), 'robot')
-    if robot['type'] != 'arx':
-        raise ValueError('Unknown robot.type (expected arx)')
+    if robot['type'] not in ('arx', 'b601'):
+        raise ValueError('Unknown robot.type (expected arx or b601)')
     _keys(robot['arms'], ('left', 'right'), (), 'robot.arms')
     if not robot['arms']:
         raise ValueError('At least one robot arm must be configured')
     ports = []
     for side, arm in robot['arms'].items():
-        allowed = ('can_interface', 'model', 'command_timeout_s', 'max_feedback_age_s')
-        _keys(arm, allowed, ('can_interface',), f'robot.arms.{side}')
-        if arm.get('model', 'L5') not in ('L5', 'Trossen_L5'):
-            raise ValueError(f'Unsupported {robot["type"]} robot model')
+        if robot['type'] == 'arx':
+            allowed = ('can_interface', 'model', 'command_timeout_s', 'max_feedback_age_s')
+            required = ('can_interface',)
+            port_key = 'can_interface'
+            if arm.get('model', 'L5') not in ('L5', 'Trossen_L5'):
+                raise ValueError(f'Unsupported {robot["type"]} robot model')
+        else:
+            allowed = ('serial_port', 'model', 'hardware_yaml', 'home_qpos',
+                       'command_timeout_s', 'max_feedback_age_s')
+            required = ('serial_port', 'model', 'hardware_yaml', 'home_qpos')
+            port_key = 'serial_port'
+            if arm.get('model') != 'B601_DM':
+                raise ValueError('Unsupported b601 robot model')
+            home = arm.get('home_qpos')
+            if not isinstance(home, list) or len(home) != 7 or any(
+                    isinstance(item, bool) or not isinstance(item, (int, float)) for item in home):
+                raise ValueError(f'{side} home_qpos must be 7 joint radians')
+            _text(arm.get('hardware_yaml', ''), f'robot.arms.{side}.hardware_yaml')
+        _keys(arm, allowed, required, f'robot.arms.{side}')
+        if robot['type'] == 'b601':
+            hw = Path(arm['hardware_yaml']).expanduser()
+            # A path next to the task wins. A leftover vendor-relative name is
+            # resolved later against REBOT_ARM_ROOT.
+            if not hw.is_absolute():
+                beside_task = path.parent / hw
+                if beside_task.is_file():
+                    arm['hardware_yaml'] = str(beside_task.resolve())
         for key in ('command_timeout_s', 'max_feedback_age_s'):
             if key in arm:
                 _number(arm[key], key)
         if fps > 500:
             raise ValueError('control_freq exceeds the selected native motor loop rate')
-        ports.append(_text(arm['can_interface'], f'robot.arms.{side}.can_interface'))
+        ports.append(_text(arm[port_key], f'robot.arms.{side}.{port_key}'))
     if len(set(ports)) != len(ports):
-        raise ValueError('Robot arms cannot share a CAN interface')
+        raise ValueError('Robot arms cannot share a port')
     _keys(document['cameras'], ('names',), ('names',), 'cameras')
     _names(document['cameras']['names'], 'cameras.names', empty=True)
     _keys(document['collection'], ('max_duration_seconds',), ('max_duration_seconds',), 'collection')
@@ -375,11 +401,18 @@ def task_start_position_path(task_name):
 
 
 def default_start_position_path(task_name, robot_type):
-    """The task's saved start pose when present, else the shared pose."""
+    """The task's saved start pose when present, else the shared ARX pose.
+
+    A B601 task never falls back to the L5 pose. A missing B601 pose is an error.
+    """
     if task_name:
         path = task_start_position_path(task_name)
         if (REPO_ROOT / path).is_file():
             return path
+        if robot_type == 'b601':
+            raise FileNotFoundError(f'B601 task {task_name} has no saved start pose at {path}')
+    if robot_type == 'b601':
+        raise FileNotFoundError('B601 start pose is missing')
     return SHARED_START_POSITION_PATHS['arx']
 
 

@@ -37,7 +37,7 @@ ages are SDK publication ages, not physical CAN-frame ages. A state older than
 `max_feedback_age_s` (default 0.1 s), or arms whose feedback times differ by
 more than 20 ms, fails the read.
 
-Each arm has its own command watchdog (`command_timeout_s`, default 0.5 s),
+Each arm has its own command watchdog (`command_timeout_s`, default 1.0 s),
 armed by its first submitted target. The target interval must be shorter than
 this timeout. Expiry, and any fault in a runtime read or send, puts the arms
 into native damping (gripper held) and rejects targets until the operator

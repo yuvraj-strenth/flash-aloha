@@ -79,8 +79,8 @@ captured_timestamp_t = 0.0
 # Shared memory configuration (must match camera_server.py)
 SHM_PREFIX = "flash_aloha_cam_"
 SHM_METADATA_SIZE = 16  # 8 bytes frame_number + 8 bytes timestamp
-DEFAULT_WIDTH = 1280
-DEFAULT_HEIGHT = 720
+DEFAULT_WIDTH = 640
+DEFAULT_HEIGHT = 480
 FRAME_CHANNELS = 3
 _SHARED_MEMORY_SUPPORTS_TRACK = (
     "track" in inspect.signature(shared_memory.SharedMemory).parameters
@@ -749,14 +749,14 @@ def _load_tuned_camera_settings(device_path):
     return dict(config.settings)
 
 
-def init_camera(device_path, width=1280, height=720, fps=60):
+def init_camera(device_path, width=640, height=480, fps=60):
     """
     Initialize a camera with standard settings.
     
     Args:
         device_path: Path to the camera device (e.g., "/dev/video_left")
-        width: Frame width (default: 1280)
-        height: Frame height (default: 720)
+        width: Frame width (default: 640)
+        height: Frame height (default: 480)
         fps: Frames per second (default: 60)
     
     Returns:

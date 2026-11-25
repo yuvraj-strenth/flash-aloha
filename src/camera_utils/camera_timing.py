@@ -69,8 +69,8 @@ class TimingLimits:
     @classmethod
     def from_env(cls):
         return cls(*[float(os.environ.get(key, default)) / 1000 for key, default in (
-            ('CAMERA_MAX_AGE_MS', '50'), ('CAMERA_MAX_SKEW_MS', '50'),
-            ('CAMERA_MAX_FUTURE_MS', '5'))])
+            ('CAMERA_MAX_AGE_MS', '100'), ('CAMERA_MAX_SKEW_MS', '50'),
+            ('CAMERA_MAX_FUTURE_MS', '10'))])
 
 
 def check_camera_timestamps(timestamps, *, now=None, limits=None):

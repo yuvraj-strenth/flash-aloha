@@ -15,7 +15,7 @@ Usage:
     python scripts/cameras/livestream_camera.py --camera overhead
 
     # Stream with an explicit expected resolution
-    python scripts/cameras/livestream_camera.py --camera overhead --width 1280 --height 720
+    python scripts/cameras/livestream_camera.py --camera overhead --width 640 --height 480
 
 Controls:
     q - Quit
@@ -60,8 +60,8 @@ CAMERA_DEVICES = {
     "test": "/dev/video_test",
 }
 
-DEFAULT_WIDTH = 1280
-DEFAULT_HEIGHT = 720
+DEFAULT_WIDTH = 640
+DEFAULT_HEIGHT = 480
 FRAME_CHANNELS = 3
 SHM_PREFIX = "flash_aloha_cam_"
 SHM_METADATA_SIZE = 16  # 8 bytes frame_number (Q) + 8 bytes timestamp (d)
@@ -396,12 +396,11 @@ Examples:
   %(prog)s --list                          # List configured camera server streams
   uv run src/camera_utils/camera_server.py --camera overhead --write-shared-memory
   %(prog)s --camera overhead               # Stream from camera server shared memory
-  %(prog)s --camera overhead -W 1280 -H 720 # Expected server frame size
+  %(prog)s --camera overhead -W 640 -H 480 # Expected server frame size
   %(prog)s --camera overhead --scale 4     # Stream with 4x larger window
 
 Common resolutions:
   640x480   (VGA)
-  1280x720  (720p HD)
   1920x1080 (1080p Full HD)
         """
     )
@@ -410,9 +409,9 @@ Common resolutions:
     parser.add_argument('--camera', '-c', type=str, default='overhead',
                        help='Camera server name, short name, or device path (default: overhead)')
     parser.add_argument('--width', '-W', type=int, default=None,
-                       help='Expected server frame width (default: saved camera params, then 1280)')
+                       help='Expected server frame width (default: saved camera params, then 640)')
     parser.add_argument('--height', '-H', type=int, default=None,
-                       help='Expected server frame height (default: saved camera params, then 720)')
+                       help='Expected server frame height (default: saved camera params, then 480)')
     parser.add_argument('--fps', type=int, default=60,
                        help='Ignored; camera_server.py owns capture FPS (kept for CLI compatibility)')
     parser.add_argument('--autofocus', type=int, choices=[0, 1], default=None,

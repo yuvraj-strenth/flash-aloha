@@ -38,7 +38,7 @@ SHORT_CAMERA_NAMES = {"left", "overhead", "right", "torso", "test"}
 def load_arx5_interface():
     """Import the local ARX5 Python binding."""
     sdk_python_dir = (
-        Path(__file__).resolve().parents[1] / "src" / "hardware" / "arx5-sdk" / "python"
+        Path(__file__).resolve().parents[2] / "src" / "hardware" / "arx5-sdk" / "python"
     )
     if str(sdk_python_dir) not in sys.path:
         sys.path.insert(0, str(sdk_python_dir))

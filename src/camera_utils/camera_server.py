@@ -183,8 +183,8 @@ def resolve_camera_config(
     width_override: int | None = None,
     height_override: int | None = None,
     fps_override: float | None = None,
-    fallback_width: int = 1280,
-    fallback_height: int = 720,
+    fallback_width: int = 640,
+    fallback_height: int = 480,
     fallback_fps: float = 50,
     params_path: str | None = None,
 ) -> CameraConfig:
@@ -690,8 +690,8 @@ CAMERA_DEVICES = {
 }
 
 # Default frame size
-DEFAULT_WIDTH = 1280
-DEFAULT_HEIGHT = 720
+DEFAULT_WIDTH = 640
+DEFAULT_HEIGHT = 480
 DEFAULT_FPS = 50
 FRAME_CHANNELS = 3
 
@@ -1902,13 +1902,13 @@ def main():
         "--width",
         type=int,
         default=None,
-        help="Capture width override. Defaults to saved camera params, then 1280.",
+        help="Capture width override. Defaults to saved camera params, then 640.",
     )
     parser.add_argument(
         "--height",
         type=int,
         default=None,
-        help="Capture height override. Defaults to saved camera params, then 720.",
+        help="Capture height override. Defaults to saved camera params, then 480.",
     )
     parser.add_argument(
         "--timestamp-fps",

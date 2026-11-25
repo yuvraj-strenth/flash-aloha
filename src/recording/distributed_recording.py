@@ -777,10 +777,16 @@ def _coordinator_main(
             atomic_write_json(manifest_path, manifest)
         try:
             event_queue.put(
-                {"type": "fatal", "error": str(exc), "traceback": traceback.format_exc()}
+                {
+                    "type": "fatal",
+                    "error": str(exc) or type(exc).__name__,
+                    "traceback": traceback.format_exc(),
+                },
+                timeout=2.0,
             )
         except Exception:
             pass
+        raise SystemExit(1) from exc
     finally:
         if metadata_stream is not None:
             metadata_stream.close()
@@ -852,7 +858,9 @@ class DistributedRecorder:
             except queue.Empty:
                 break
             if event.get("type") == "fatal":
-                self.fatal_error = event.get("error", "unknown recorder error")
+                self.fatal_error = (
+                    event.get("error") or event.get("traceback") or "unknown recorder error"
+                )
             if "sample_count" in event:
                 self.committed_sample_count = int(event["sample_count"])
             if "cameras" in event:
@@ -866,31 +874,33 @@ class DistributedRecorder:
                 self.manifests.append(event["manifest_path"])
 
     def check_health(self) -> None:
+        """Raise the coordinator's fatal event even after the child has exited.
+
+        A failed coordinator writes the episode manifest, puts a fatal event,
+        then exits. The parent must join and drain that event before treating
+        a dead process as an unexplained exit.
+        """
         self._poll_events()
         if self.fatal_error:
             raise RecorderError(self.fatal_error)
-        if not self.process.is_alive():
-            raise RecorderError(f"Recorder coordinator exited with code {self.process.exitcode}")
+        if self.process.is_alive():
+            return
+        self.process.join(timeout=1.0)
+        self._poll_events()
+        if self.fatal_error:
+            raise RecorderError(self.fatal_error)
+        raise RecorderError(f"Recorder coordinator exited with code {self.process.exitcode}")
 
     def _send_and_wait(
         self,
         command: dict[str, Any],
         timeout: float,
-        *,
-        allow_known_fatal: bool = False,
     ) -> dict[str, Any]:
         command_id = command.setdefault("command_id", uuid.uuid4().hex)
         self.command_queue.put(command, timeout=min(float(timeout), 0.5))
         deadline = time.monotonic() + float(timeout)
         while time.monotonic() < deadline:
-            if allow_known_fatal:
-                self._poll_events()
-                if not self.process.is_alive():
-                    raise RecorderError(
-                        f"Recorder coordinator exited with code {self.process.exitcode}"
-                    )
-            else:
-                self.check_health()
+            self.check_health()
             if command_id in self.events:
                 return self.events.pop(command_id)
             time.sleep(0.005)
@@ -1012,9 +1022,7 @@ class DistributedRecorder:
                 capture_gc.collect_idle()  # between episodes, never during capture
                 return event.get("manifest_path")
             if not self.process.is_alive():
-                raise RecorderError(
-                    f"Recorder coordinator exited with code {self.process.exitcode}"
-                )
+                self.check_health()
             time.sleep(0.005)
         raise RecorderError("Coordinator command timed out: stop")
 

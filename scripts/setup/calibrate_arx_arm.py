@@ -4,7 +4,9 @@
 import argparse
 import json
 import os
+import re
 import select
+import subprocess
 import sys
 import termios
 import time
@@ -40,7 +42,7 @@ KEY_BUFFER = bytearray()
 def load_arx5_interface():
     """Import the local ARX5 Python binding."""
     sdk_python_dir = (
-        Path(__file__).resolve().parents[1]
+        Path(__file__).resolve().parents[2]
         / "src"
         / "hardware"
         / "arx5-sdk"
@@ -54,7 +56,41 @@ def load_arx5_interface():
     return arx5
 
 
+def require_can_transmit_ready(can_interface):
+    """Stop before opening the arm when the kernel will discard CAN writes."""
+    link = subprocess.run(
+        ["ip", "-details", "link", "show", can_interface],
+        check=False, capture_output=True, text=True,
+    )
+    if link.returncode != 0:
+        raise RuntimeError(f"CAN interface {can_interface} is not available: {link.stderr.strip()}")
+    state = "UP"
+    for name in ("BUS-OFF", "ERROR-PASSIVE", "STOPPED", "DOWN"):
+        if f"state {name}" in link.stdout:
+            state = name
+            break
+    qdisc = subprocess.run(
+        ["tc", "-s", "qdisc", "show", "dev", can_interface],
+        check=False, capture_output=True, text=True,
+    )
+    backlog = re.search(r"backlog \d+b (\d+)p", qdisc.stdout)
+    stuck = int(backlog.group(1)) if backlog else 0
+    if state == "ERROR-ACTIVE" and stuck == 0:
+        return
+    raise RuntimeError(
+        f"{can_interface} cannot transmit (state {state}, {stuck} frames stuck in the queue). "
+        "The kernel discards the motor commands, so the arm never answers. Reset the interface, "
+        "then confirm one frame leaves before starting calibration:\n"
+        f"sudo ip link set {can_interface} down\n"
+        f"sudo ip link set {can_interface} type can bitrate 1000000 restart-ms 100\n"
+        f"sudo ip link set {can_interface} up\n"
+        f"cansend {can_interface} 100#1122334455667788\n"
+        f"ip -details link show {can_interface}"
+    )
+
+
 def build_controller(arx5, model, can_interface, controller_fps):
+    require_can_transmit_ready(can_interface)
     robot_config = arx5.RobotConfigFactory.get_instance().get_config(resolve_arx_model(model))
     controller_config = arx5.ControllerConfigFactory.get_instance().get_config(
         "joint_controller",
