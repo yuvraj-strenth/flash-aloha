@@ -470,51 +470,23 @@ class LiveCamera:
         self.last_warn_time = 0.0
 
     def open(self):
-        if not os.path.exists(self.device_path):
-            raise RuntimeError(f"{self.device_path} does not exist")
+        from camera_utils.camera_server_realsense import RealSenseColorCapture, serial_for_camera
 
-        cap = cv2.VideoCapture(self.device_path, cv2.CAP_V4L2)
-        if not cap.isOpened():
-            raise RuntimeError(f"Failed to open {self.device_path}")
-
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        cap.set(cv2.CAP_PROP_FPS, self.target_fps)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)
-        cap.set(cv2.CAP_PROP_AUTO_WB, 0)
-        cap.set(cv2.CAP_PROP_WB_TEMPERATURE, 3615)
-        cap.set(cv2.CAP_PROP_AUTOFOCUS, self.autofocus)
-        cap.set(cv2.CAP_PROP_FOCUS, self.focus)
-        cap.set(cv2.CAP_PROP_GAIN, self.gain)
-
-        try:
-            subprocess.run(
-                [
-                    "v4l2-ctl",
-                    "-d",
-                    self.device_path,
-                    "--set-ctrl=exposure_dynamic_framerate=0",
-                ],
-                capture_output=True,
-                check=False,
-            )
-        except FileNotFoundError:
-            pass
+        camera_name = self.name if self.name.startswith("video_") else f"video_{self.name}"
+        cap = RealSenseColorCapture(camera_name)
+        _, actual_fps = serial_for_camera(camera_name)
 
         self.cap = cap
-        self.actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.actual_width = int(cap.width)
+        self.actual_height = int(cap.height)
         self.window_width = max(1, int(self.actual_width * self.scale))
         self.window_height = max(1, int(self.actual_height * self.scale))
 
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(self.window_name, self.window_width, self.window_height)
 
-        actual_fps = cap.get(cv2.CAP_PROP_FPS)
         print(
-            f"Camera {self.name}: {self.device_path} "
+            f"Camera {self.name}: {camera_name} "
             f"{self.actual_width}x{self.actual_height} @ {actual_fps:.1f} FPS"
         )
 

@@ -8,8 +8,7 @@ Writes the two per-arm files the masking config (calibration/masking/masking.yam
     # 2. Arm base in the overhead camera: the board visible to the overhead and wrist cameras.
     python scripts/setup/calibrate_masking.py overhead --arm left
 
-The default arm is the reBot B601-DM on the Damiao serial adapter /dev/ttyACM0 (the same
-connection lerobot-calibrate uses). --backend arx is the SocketCAN L5 path. The arm is
+The default arm uses the ARX SocketCAN L5 path. The arm is
 homed, then put in gravity-compensated passive mode: guide it by hand, press 's'
 in the camera window to save a view and 'q' to finish; it then returns home. Ctrl+C or any
 failure enters damping until 'h' homes the arm (docs/safe_exit.md). Stop the camera servers
@@ -127,35 +126,20 @@ def capture_arx(args, setup, arm_config, directories, chain):
     return not failed
 
 
-def capture_b601(args, setup, arm_config, directories, chain):
-    """Same capture on the reBot B601-DM, through its Damiao serial adapter."""
-    from hardware.runtime import RuntimeDamping
-    from hardware.safe_exit import damping_exit
-    from recording.b601_session import load_task, open_runtime
-    task_path = args.task_config or str(Path(__file__).resolve().parents[2] / 'src/config/tasks/b601_single.yaml')
-    hardware = open_runtime(load_task(task_path))
-    if args.arm not in hardware.arms:
-        raise RuntimeError(f'{task_path} has no {args.arm} arm')
-    arm = hardware.arms[args.arm]
-    if args.serial_port:
-        arm._serial = args.serial_port
-    arm.set_compliant(True)
-    print(f'Connecting the {args.arm} B601 on {arm._serial}.')
-    print("Ctrl+C or any failure: damping, then 'h' returns the arm home.")
+def capture_piperx(args, setup, arm_config, directories, chain):
+    """Enable teaching mode on PiperX, capture views, and cleanly release teaching mode."""
+    from hardware.backends.piperx import PiperXAdapter
+    can_interface = args.can_interface or DEFAULT_CAN_INTERFACES.get(args.arm, 'can0')
+    adapter = PiperXAdapter(args.arm, 'PiperX', can_interface=can_interface)
+    adapter.connect()
+    print(f'Connected to the {args.arm} PiperX arm on {can_interface}.')
     cameras, failed = {}, False
     try:
-        hardware.connect()
-        with damping_exit(lambda: RuntimeDamping(hardware) if hardware.live_arms() else None):
-            arm.home()
-            arm.set_compliant(True)
-            cameras = open_cameras(camera_devices(args, setup, arm_config))
-            print("Guide the arm by hand. 's' saves a view, 'q' finishes.")
-
-            def read_joints():
-                return hardware.read_state()['qpos']
-
-            saved = capture_views(read_joints, chain, cameras, directories, args.poses)
-            print(f'{saved} views saved')
+        adapter.set_teaching_mode(True)
+        cameras = open_cameras(camera_devices(args, setup, arm_config))
+        print("Guide the arm by hand. 's' saves a view, 'q' finishes.")
+        saved = capture_views(lambda: adapter.read_state()['qpos'], chain, cameras, directories, args.poses)
+        print(f'{saved} views saved')
     except KeyboardInterrupt:
         failed = True
         print('\nCalibration interrupted.')
@@ -164,17 +148,18 @@ def capture_b601(args, setup, arm_config, directories, chain):
         raise
     finally:
         finish_cameras(cameras)
-        if not failed and hardware.live_arms():
-            arm.home()
-        hardware.close()
+        try:
+            adapter.set_teaching_mode(False)
+        finally:
+            adapter.disconnect()
     return not failed
 
 
 def capture(args, setup, arm_config, directories):
     from utils.masking import create_kdl_chain
     chain = create_kdl_chain(setup['urdf'], setup['links']['end_effector'])
-    if args.backend == 'b601':
-        return capture_b601(args, setup, arm_config, directories, chain)
+    if args.backend == 'piperx':
+        return capture_piperx(args, setup, arm_config, directories, chain)
     return capture_arx(args, setup, arm_config, directories, chain)
 
 
@@ -226,11 +211,8 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('mode', choices=('wrist-camera', 'overhead'))
     parser.add_argument('--arm', required=True, help='Arm name in the masking config (e.g. left, right)')
+    parser.add_argument('--backend', choices=('arx', 'piperx'), default='arx', help='Robot backend (default: arx)')
     parser.add_argument('--masking-config', help='Masking config YAML (default: calibration/masking/masking.yaml)')
-    parser.add_argument('--backend', choices=('b601', 'arx'), default='b601',
-                        help='b601 uses the Damiao serial adapter; arx uses SocketCAN')
-    parser.add_argument('--serial-port', help='B601 Damiao adapter (default: the task YAML, /dev/ttyACM0)')
-    parser.add_argument('--task-config', help='B601 task YAML (default: src/config/tasks/b601_single.yaml)')
     parser.add_argument('--can-interface', help='ARX CAN interface (default: can0 for left, can1 for right)')
     parser.add_argument('--model', default='L5', help='ARX SDK model name')
     parser.add_argument('--controller-fps', type=float, default=500.0, help='ARX controller rate')

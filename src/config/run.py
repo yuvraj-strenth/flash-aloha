@@ -95,17 +95,14 @@ def build_plan(args, extra=()):
     task = None
     if args.workflow in ('collect', 'view', 'replay'):
         task = resolve_task(args.name)
-        b601 = task.as_dict()['robot']['type'] == 'b601'
+        robot_type = task.as_dict()['robot']['type']
         if args.workflow == 'collect':
-            if b601:
-                runner = [str(SOURCE_ROOT / 'recording' / 'record_b601.py'),
+            if robot_type == 'piperx':
+                runner = [str(SOURCE_ROOT / 'recording' / 'record_piperx.py'),
                           '--task-config', task.source]
             else:
                 runner = script('record.py', 'single',
                                 '--task_name', task.name, '--task-config', task.source)
-        elif b601 and args.workflow == 'replay':
-            runner = [str(SOURCE_ROOT / 'recording' / 'replay_b601.py'),
-                      '--task-config', task.source, *map(str, args.episodes)]
         else:
             robot = task.legacy()['robot_type']
             runner = script('visualize.py', 'episode', '--robot', robot,
@@ -127,7 +124,6 @@ def build_plan(args, extra=()):
                 raise ValueError('Named inference requires a training config referencing a task YAML')
             require_standard_training(training)
             profile = resolve_inference_profile(args, recipe, task, training) if args.workflow == 'infer' else None
-            b601 = task.as_dict()['robot']['type'] == 'b601'
             if profile is not None and profile[1] == 'remote':
                 if args.policy_step is not None:
                     raise ValueError('A remote client cannot select the checkpoint step; '
@@ -135,16 +131,9 @@ def build_plan(args, extra=()):
                 plan['inference_config'] = profile[0]['inference_config']
                 runner = script('infer.py', 'remote', '--inference-config', plan['inference_config'],
                                 '--task-config', task.source)
-                if b601:
-                    runner += ['--shared-hardware']
             else:
                 plan['checkpoint_config'] = str(checkpoint)
-                if args.workflow == 'serve':
-                    mode = 'serve'
-                elif b601:
-                    mode = 'b601'
-                else:
-                    mode = 'direct'
+                mode = 'serve' if args.workflow == 'serve' else 'direct'
                 runner = script('infer.py', mode)
                 if profile is not None:
                     plan['inference_config'] = profile[0]['inference_config']

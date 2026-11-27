@@ -27,7 +27,7 @@ before or after the cameras.
 | Checkerboard | Wrist and overhead extrinsics | **10 × 7 inner corners** (11 × 8 squares), square side **20 mm**. One A4 sheet, landscape |
 | Both RealSense cameras connected | All camera steps | Serials already in `cam_config.yaml` |
 | Flat, rigid backing | Both boards | Tape each print to a stiff panel so it cannot bend |
-| Left arm, motor power on | Extrinsics and the start pose | This arm is the reBot B601-DM on the Damiao serial adapter `/dev/ttyACM0`, not the Thor `can0` port |
+| Left arm, motor power on | Extrinsics and the start pose | SocketCAN `can0` (for ARX or PiperX) |
 | A display | Every step that opens a window | Click the OpenCV window before pressing keys |
 
 Print each board at 100% scale on one A4 sheet in landscape. Do not fit to page.
@@ -83,7 +83,7 @@ passive mode.
 /home/thor/miniforge3/envs/lerobot_env2/bin/python scripts/setup/calibrate_masking.py wrist-camera --arm left
 ```
 
-That opens the B601 through `/dev/ttyACM0`, the same Damiao adapter `lerobot-calibrate` used. It does not use `can0`.
+That opens the arm through `can0` (use `--can-interface` if on another CAN port).
 
 Guide the arm by hand so the wrist camera sees the full checkerboard. Click the
 `Masking calibration` window:

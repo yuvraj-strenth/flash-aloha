@@ -83,7 +83,7 @@ flowchart TD
 
 **Between episodes the operator can replay the take on the real arm. That catches trajectories the position controller cannot track before they enter the dataset. There is no separate leader robot, so there is no leader-to-follower latency and no second embodiment to retarget.**
 
-**This repository drives ARX L5 and Trossen L5 arms over CAN (**`robot.type: arx` **in the task YAML). A separate B601 backend exists for that arm. The paper’s HESSIAN toss-and-catch rig is not what the example** `single_arm` **and** `bimanual` **tasks start. Gravity is tuned once per physical arm with** `scripts/tune.py gravity`**, then friction with** `scripts/tune.py friction`**, and the SDK stores the result in the URDF.**
+**This repository drives ARX L5 and Trossen L5 arms over CAN (**`robot.type: arx` **in the task YAML), as well as PiperX arms (**`robot.type: piperx`**). The paper’s HESSIAN toss-and-catch rig is not what the example** `single_arm` **and** `bimanual` **tasks start. Gravity is tuned once per physical ARX arm with** `scripts/tune.py gravity`**, then friction with** `scripts/tune.py friction`**, and the SDK stores the result in the URDF.**
 
 ---
 

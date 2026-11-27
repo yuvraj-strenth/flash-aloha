@@ -105,7 +105,7 @@ def test_catalog_exposes_validated_task_configs():
     from config.task_config import task_directories
     paths = [path for directory in task_directories() for path in directory.glob('*.yaml')]
     assert {path.stem for path in paths} == set(constants.TASK_CONFIGS)
-    assert {'single_arm', 'bimanual', 'b601_single'} == {path.stem for path in (CONFIG_ROOT / 'tasks').glob('*.yaml')}
+    assert {'single_arm', 'bimanual', 'piperx_single'} == {path.stem for path in (CONFIG_ROOT / 'tasks').glob('*.yaml')}
     for path in paths:
         task = load_task_config(path)
         old = constants.TASK_CONFIGS[task.name]
@@ -116,9 +116,9 @@ def test_catalog_exposes_validated_task_configs():
         assert doc['cameras']['names'] == old['camera_names']
         assert doc['robot']['type'] == old['robot_type']
         arms = doc['robot']['arms']
-        if doc['robot']['type'] == 'b601':
-            assert arms['left']['model'] == 'B601_DM'
-            assert arms['left']['serial_port']
+        if doc['robot']['type'] == 'piperx':
+            assert arms['left']['model'] == 'PiperX'
+            assert arms['left']['can_interface']
             continue
         # Arms may also declare their model and safety timeouts.
         arms = {side: {'can_interface': arm['can_interface']} for side, arm in arms.items()}

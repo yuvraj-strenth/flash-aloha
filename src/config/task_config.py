@@ -301,8 +301,8 @@ def load_task_config(path, *, overrides=None, defaults_path=None):
     document['data']['directory'] = _path(document['data']['directory'], path.parent, 'data.directory')
     robot = document['robot']
     _keys(robot, ('type', 'arms'), ('type', 'arms'), 'robot')
-    if robot['type'] not in ('arx', 'b601'):
-        raise ValueError('Unknown robot.type (expected arx or b601)')
+    if robot['type'] not in ('arx', 'piperx'):
+        raise ValueError('Unknown robot.type (expected arx or piperx)')
     _keys(robot['arms'], ('left', 'right'), (), 'robot.arms')
     if not robot['arms']:
         raise ValueError('At least one robot arm must be configured')
@@ -315,26 +315,13 @@ def load_task_config(path, *, overrides=None, defaults_path=None):
             if arm.get('model', 'L5') not in ('L5', 'Trossen_L5'):
                 raise ValueError(f'Unsupported {robot["type"]} robot model')
         else:
-            allowed = ('serial_port', 'model', 'hardware_yaml', 'home_qpos',
+            allowed = ('can_interface', 'model', 'tcp_offset_m',
                        'command_timeout_s', 'max_feedback_age_s')
-            required = ('serial_port', 'model', 'hardware_yaml', 'home_qpos')
-            port_key = 'serial_port'
-            if arm.get('model') != 'B601_DM':
-                raise ValueError('Unsupported b601 robot model')
-            home = arm.get('home_qpos')
-            if not isinstance(home, list) or len(home) != 7 or any(
-                    isinstance(item, bool) or not isinstance(item, (int, float)) for item in home):
-                raise ValueError(f'{side} home_qpos must be 7 joint radians')
-            _text(arm.get('hardware_yaml', ''), f'robot.arms.{side}.hardware_yaml')
+            required = ('can_interface', 'model')
+            port_key = 'can_interface'
+            if arm.get('model') != 'PiperX':
+                raise ValueError('Unsupported piperx robot model')
         _keys(arm, allowed, required, f'robot.arms.{side}')
-        if robot['type'] == 'b601':
-            hw = Path(arm['hardware_yaml']).expanduser()
-            # A path next to the task wins. A leftover vendor-relative name is
-            # resolved later against REBOT_ARM_ROOT.
-            if not hw.is_absolute():
-                beside_task = path.parent / hw
-                if beside_task.is_file():
-                    arm['hardware_yaml'] = str(beside_task.resolve())
         for key in ('command_timeout_s', 'max_feedback_age_s'):
             if key in arm:
                 _number(arm[key], key)
@@ -401,18 +388,11 @@ def task_start_position_path(task_name):
 
 
 def default_start_position_path(task_name, robot_type):
-    """The task's saved start pose when present, else the shared ARX pose.
-
-    A B601 task never falls back to the L5 pose. A missing B601 pose is an error.
-    """
+    """The task's saved start pose when present, else the shared ARX pose."""
     if task_name:
         path = task_start_position_path(task_name)
         if (REPO_ROOT / path).is_file():
             return path
-        if robot_type == 'b601':
-            raise FileNotFoundError(f'B601 task {task_name} has no saved start pose at {path}')
-    if robot_type == 'b601':
-        raise FileNotFoundError('B601 start pose is missing')
     return SHARED_START_POSITION_PATHS['arx']
 
 

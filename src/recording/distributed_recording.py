@@ -1130,7 +1130,7 @@ def publish_recording(manifest_path: str | Path) -> list[str]:
             target /= str(decision)
         metadata = dict(manifest.get('metadata') or {}, sim=False,
             rollout=kind == 'rollout', dagger=kind == 'dagger', recording_decision=decision,
-            failure=decision == 'failure', robot_type='arx', robot_model='L5',
+            failure=decision == 'failure',
             single_arm=not manifest['is_double_arm'], double_arm=manifest['is_double_arm'])
         arrays = {}
         if kind == 'dagger':

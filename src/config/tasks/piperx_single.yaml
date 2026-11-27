@@ -1,0 +1,25 @@
+# Example task: one PiperX arm over SocketCAN, two cameras, 100 Hz.
+schema_version: 1
+task:
+  name: piperx_single
+control_freq: 100
+data:
+  directory: ../../../data/piperx_single
+robot:
+  type: piperx
+  arms:
+    left:
+      model: PiperX
+      can_interface: can0
+      command_timeout_s: 1.0
+      max_feedback_age_s: 0.1
+cameras:
+  names: [video_overhead, video_left]
+camera_settings: {}
+collection:
+  max_duration_seconds: 15
+training:
+  observations: [qpos]
+  outputs: [action]
+  state_dim: 7
+  action_dim: 7

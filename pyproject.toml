@@ -15,6 +15,7 @@ dependencies = [
     "matplotlib>=3.10.6",
     "msgpack>=1.0.5",
     "opencv-python>=4.11.0.86",
+    "python-can>=3.3.4",
     "pyyaml>=6.0.2",
     "robotmq==0.1.15",
     "scipy>=1.15.3",

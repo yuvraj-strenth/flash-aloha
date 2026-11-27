@@ -8,8 +8,8 @@ Usage:
     # List available camera-server streams
     python scripts/cameras/livestream_camera.py --list
 
-    # Start a camera server in another terminal
-    uv run src/camera_utils/camera_server.py --camera overhead --write-shared-memory
+    # Start the RealSense camera server in another terminal
+    python src/camera_utils/camera_server_realsense.py
 
     # Stream from that server
     python scripts/cameras/livestream_camera.py --camera overhead
@@ -268,8 +268,7 @@ def livestream(
         if not reader.connect():
             print(
                 f"[ERROR] Camera server shared memory not found: {reader.shm_name}\n"
-                f"        Start it with: uv run src/camera_utils/camera_server.py "
-                f"--camera {camera_name} --write-shared-memory"
+                f"        Start it with: python src/camera_utils/camera_server_realsense.py"
             )
             return False
     except Exception as exc:

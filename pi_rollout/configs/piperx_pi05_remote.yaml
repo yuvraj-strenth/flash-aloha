@@ -1,0 +1,33 @@
+schema_version: 1
+task: piperx_single
+backend: remote
+# Local or remote OpenPI Pi0.5 server for PiperX with chunk blending & RTC.
+connection:
+  host: localhost
+  port: 8000
+execution:
+  # Model horizon must cover chunk_steps + overlap_steps (+ blending.steps if RTC).
+  chunk_steps: 25
+  first_chunk_steps: 25
+  async_inference: true
+  overlap_steps: 20
+blending:
+  method: sigmoid
+  steps: 5
+rtc:
+  training_time: true
+  enabled: true
+  prefix_steps: 20
+smoothing:
+  temporal_agg: false
+  temporal_agg_k: 0.005
+  action_interp: false
+  masking_strategy: null
+  masking_config: null
+recording:
+  rollouts: false
+  dagger: false
+  eval: false
+  save_video: false
+options:
+  prompt: describe the task exactly as in the training export

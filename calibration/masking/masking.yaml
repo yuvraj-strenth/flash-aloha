@@ -7,9 +7,9 @@ calibration:
   # whatever resolution the policy uses: the intrinsics are rescaled to it.
   image_size: [640, 480]
   # Arm model used for forward kinematics, and the links masks can follow.
-  # The connected arm is the reBot B601-DM. This file is the vendor URDF, resolved from REBOT_ARM_ROOT.
-  urdf: ../../../strenth-flow/vendor/reBotArm_control_py/urdf/DM/urdf/ReBot_Arm_DM.urdf
-  links: {wrist: link6, end_effector: end_link}
+  # AgileX Piper / PiperX URDF (from agilexrobotics/piper_ros).
+  urdf: ../urdf/piper_description.urdf
+  links: {wrist: link6, end_effector: gripper_base}
   joints_per_arm: 6            # each arm's state is these joints followed by its gripper
   overhead_camera:
     name: video_overhead

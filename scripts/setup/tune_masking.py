@@ -79,12 +79,11 @@ class LiveSource:
     """Camera devices and the joint positions of hand-guided ARX arms."""
 
     def __init__(self, controllers, cameras, size):
+        from camera_utils.camera_server_realsense import RealSenseColorCapture
         self.controllers, self.size, self.captures = controllers, size, {}
         for name in cameras:
-            capture = cv2.VideoCapture(f'/dev/{name}')
-            if not capture.isOpened():
-                raise RuntimeError(f'Cannot open /dev/{name}; stop the camera servers first')
-            self.captures[name] = capture
+            camera_name = name if name.startswith('video_') else f'video_{name}'
+            self.captures[name] = RealSenseColorCapture(camera_name)
 
     def read(self):
         from contracts.standard_image_processing import resize_image

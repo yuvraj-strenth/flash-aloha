@@ -8,8 +8,8 @@ def normalize_hardware_config(config, *, base_dir=None):
     if not isinstance(config, Mapping) or set(config) - {'type', 'arms'} or not config.get('arms'):
         raise ValueError('Hardware config requires type and arms')
     backend = config.get('type')
-    if backend not in ('arx', 'b601'):
-        raise ValueError('Hardware type must be arx or b601')
+    if backend not in ('arx', 'piperx'):
+        raise ValueError('Hardware type must be arx or piperx')
     if not isinstance(config['arms'], Mapping) or set(config['arms']) - {'left', 'right'}:
         raise ValueError('Hardware arms must name left and/or right')
     arms, ports = {}, set()
@@ -22,21 +22,15 @@ def normalize_hardware_config(config, *, base_dir=None):
             port_key = 'can_interface'
             supported = ('L5', 'Trossen_L5')
         else:
-            allowed = {'model', 'serial_port', 'hardware_yaml', 'home_qpos',
+            allowed = {'model', 'can_interface', 'tcp_offset_m',
                        'command_timeout_s', 'max_feedback_age_s'}
-            port_key = 'serial_port'
-            supported = ('B601_DM',)
+            port_key = 'can_interface'
+            supported = ('PiperX',)
         if set(arm) - allowed:
             raise ValueError(f'Unknown hardware options for {role}')
         model = arm.get('model')
         if model not in supported:
             raise ValueError(f'{role}: explicitly choose one of {supported}')
-        if backend == 'b601':
-            if not isinstance(arm.get('hardware_yaml'), str) or not arm['hardware_yaml'].strip():
-                raise ValueError(f'{role} needs a DM hardware_yaml')
-            home = arm.get('home_qpos')
-            if not isinstance(home, (list, tuple)) or len(home) != 7:
-                raise ValueError(f'{role} home_qpos must be 7 joint radians')
         port = arm.get(port_key)
         if not isinstance(port, str) or not port.strip() or port in ports:
             raise ValueError('Each arm needs a distinct port')
@@ -56,5 +50,5 @@ def build_arms(config, *, base_dir=None):
     if config['type'] == 'arx':
         from hardware.backends.arx import ARXAdapter as Adapter
     else:
-        from hardware.backends.b601 import B601Adapter as Adapter
+        from hardware.backends.piperx import PiperXAdapter as Adapter
     return {role: Adapter(role=role, **arm) for role, arm in config['arms'].items()}

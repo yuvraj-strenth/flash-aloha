@@ -603,16 +603,18 @@ def capture_image(stop_event, double_arm=False, camera_side='left', camera_names
             cap.release()
 
 def get_camera_info(cam, cam_name):
-    """
-    Get camera information including fps, dimensions, and autofocus settings.
-    
-    Args:
-        cam: cv2.VideoCapture object
-        cam_name: Name of the camera for identification
-    
-    Returns:
-        Dictionary containing camera properties
-    """
+    """Get camera information including fps, dimensions, and autofocus settings."""
+    from camera_utils.camera_server_realsense import serial_for_camera
+
+    if hasattr(cam, 'camera_name'):
+        _, fps = serial_for_camera(cam.camera_name)
+        return {
+            'name': cam_name,
+            'fps': fps,
+            'width': cam.width,
+            'height': cam.height,
+            'autofocus': 0,
+        }
     return {
         'name': cam_name,
         'fps': cam.get(cv2.CAP_PROP_FPS),
@@ -750,51 +752,14 @@ def _load_tuned_camera_settings(device_path):
 
 
 def init_camera(device_path, width=640, height=480, fps=60):
-    """
-    Initialize a camera with standard settings.
-    
-    Args:
-        device_path: Path to the camera device (e.g., "/dev/video_left")
-        width: Frame width (default: 640)
-        height: Frame height (default: 480)
-        fps: Frames per second (default: 60)
-    
-    Returns:
-        cv2.VideoCapture object or None if failed to open
-    """
-    if not os.path.exists(device_path):
-        print(f"[WARN] {device_path} does not exist; skipping")
+    """Initialize a RealSense camera by name or legacy /dev/video_* path."""
+    from camera_utils.camera_server_realsense import RealSenseColorCapture
+
+    name = os.path.basename(str(device_path))
+    camera_name = name if name.startswith("video_") else f"video_{name}"
+    try:
+        return RealSenseColorCapture(camera_name)
+    except Exception as exc:
+        print(f"[ERR] Failed to open {camera_name}: {exc}")
         return None
-
-    cap = cv2.VideoCapture(device_path, cv2.CAP_V4L2)
-    if not cap.isOpened():
-        print(f"[ERR] Failed to open {device_path}")
-        return None
-
-    tuned_settings = _load_tuned_camera_settings(device_path)
-
-    # Stream format & timing
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-    
-    # if 'video_right' in device_path:
-    #     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    #     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)  # Global shutter camera max 720p
-    # else:
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-    # Global Shutter Camera (video_right) supports 90fps and needs buffer=2 for full speed
-    # Buffer=2 gives ~89 FPS with ~22ms max latency (best tradeoff)
-    # Other cameras work best with buffer=1 at 60fps
-    # if 'video_right' in device_path:
-    #     # cap.set(cv2.CAP_PROP_FPS, 30)
-    #     # global shutter
-    #     cap.set(cv2.CAP_PROP_FPS, 90)
-    #     # cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
-    # else:
-    cap.set(cv2.CAP_PROP_FPS, fps)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-    _apply_tuned_camera_settings(cap, device_path, tuned_settings)
-
-    return cap
 

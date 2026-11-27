@@ -48,13 +48,11 @@ class CameraSource:
                     raise RuntimeError(f"Camera server shared memory not available for {camera_name}")
                 self.readers[camera_name] = reader
         else:
-            from camera_utils.capture import init_camera
+            from camera_utils.camera_server_realsense import RealSenseColorCapture
 
             for camera_name in self.camera_names:
-                cap = init_camera(f"/dev/{camera_name}")
-                if cap is None or not cap.isOpened():
-                    raise RuntimeError(f"Failed to open /dev/{camera_name}")
-                self.captures[camera_name] = cap
+                full_name = camera_name if camera_name.startswith("video_") else f"video_{camera_name}"
+                self.captures[camera_name] = RealSenseColorCapture(full_name)
 
     def read(self) -> CameraRead:
         frames: dict[str, np.ndarray] = {}

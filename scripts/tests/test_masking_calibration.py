@@ -154,3 +154,40 @@ def test_capture_uses_the_existing_arx_setup_and_the_safe_exit():
     assert 'with damping_exit(lambda: ARXDamping([controller])):' in source
     assert source.index('damping_exit(') < source.index('controller.reset_to_home()') < source.index('set_passive_mode(controller)')
     assert 'if not failed:' in source and 'safe_home(controller)' in source
+
+
+def test_capture_piperx_dispatches_and_releases_teaching_mode(monkeypatch, tmp_path):
+    events = []
+
+    class FakeAdapter:
+        def __init__(self, arm, model, can_interface='can0'):
+            events.append(('init', arm, model, can_interface))
+
+        def connect(self):
+            events.append('connect')
+
+        def set_teaching_mode(self, enabled):
+            events.append(('teach', enabled))
+
+        def read_state(self):
+            return {'qpos': np.zeros(7, dtype=float)}
+
+        def disconnect(self):
+            events.append('disconnect')
+
+    import hardware.backends.piperx as piperx_mod
+    monkeypatch.setattr(piperx_mod, 'PiperXAdapter', FakeAdapter)
+    monkeypatch.setattr(calibrate_masking, 'open_cameras', lambda devices: {'wrist': 'cam'})
+    monkeypatch.setattr(calibrate_masking, 'finish_cameras', lambda cameras: events.append('finish_cameras'))
+    monkeypatch.setattr(calibrate_masking, 'capture_views', lambda read_joints, chain, cams, dirs, count: (read_joints(), 2)[1])
+
+    class FakeChain:
+        def getNrOfJoints(self):
+            return 6
+
+    args = calibrate_masking.build_parser().parse_args(
+        ['wrist-camera', '--arm', 'left', '--backend', 'piperx', '--can-interface', 'can0', '--poses', '3']
+    )
+    ok = calibrate_masking.capture_piperx(args, {}, {'wrist_camera': 'video_left'}, {'wrist': tmp_path}, FakeChain())
+    assert ok is True
+    assert ('teach', True) in events and ('teach', False) in events and 'disconnect' in events

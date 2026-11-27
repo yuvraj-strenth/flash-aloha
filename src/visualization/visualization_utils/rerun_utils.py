@@ -173,12 +173,8 @@ def parse_urdf(urdf_path=None, robot_type='arx'):
             # Default ARX5 path (fallback)
             urdf_path = str(Path(__file__).resolve().parents[2] / "hardware/arx5-sdk/models/L5.urdf")
             print(f"[→] Using ARX5 URDF: {urdf_path}")
-        elif robot_type == 'b601':
-            from hardware.backends.b601 import b601_urdf_path
-            urdf_path = str(b601_urdf_path())
-            print(f"[→] Using B601 URDF: {urdf_path}")
         else:
-            raise ValueError(f"Unknown robot_type: {robot_type}. Must be 'arx', 'arx5', or 'b601'")
+            raise ValueError(f"Unknown robot_type: {robot_type}. Must be 'arx' or 'arx5'")
     
     robot = URDF.from_xml_file(urdf_path)
     

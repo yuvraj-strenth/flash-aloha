@@ -11,7 +11,6 @@ from _launcher import main
 
 MODES = {
     'direct': ('src/inference/inference_direct.py', 'load the checkpoint and run the robot in this process'),
-    'b601': ('src/inference/inference_b601.py', 'load the checkpoint and run a reBot B601-DM in this process'),
     'remote': ('src/inference/inference_remote.py', 'robot-side client of a policy server'),
     'serve': ('src/inference/serve_policy.py', 'serve a checkpoint over WebSocket to a remote client'),
 }
