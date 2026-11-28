@@ -108,11 +108,16 @@ def require_camera_timestamps(timestamps, **kwargs):
     return report
 
 
+# V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC. A RealSense stamp converted onto CLOCK_MONOTONIC
+# carries this same flag so alignment can see the clock that conversion already checked.
+MONOTONIC_CLOCK_FLAGS = 0x2000
+
+
 def driver_timestamp(timestamp, flags):
     """Reject unknown clocks and missing timestamps instead of inventing a time."""
     if not math.isfinite(timestamp) or timestamp <= 0:
         raise CameraTimingError('V4L2 returned no valid capture timestamp')
-    if flags & 0xE000 != 0x2000:  # V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
+    if flags & 0xE000 != MONOTONIC_CLOCK_FLAGS:
         raise CameraTimingError(f'V4L2 timestamp is not CLOCK_MONOTONIC (flags={flags:#x})')
     return float(timestamp)
 

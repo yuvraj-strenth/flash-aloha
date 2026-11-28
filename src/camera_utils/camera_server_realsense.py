@@ -30,7 +30,7 @@ SRC = ROOT / 'src'
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from camera_utils.camera_timing import CameraTimingError
+from camera_utils.camera_timing import MONOTONIC_CLOCK_FLAGS, CameraTimingError
 from contracts import capture_gc
 
 
@@ -175,9 +175,16 @@ def start_recording_writer(stream_name, width, height, fps):
 
 
 def publish_captured_frame(buffer, writer, frame, frame_number, stamp):
-    """Write one BGR frame, then hand that same frame and stamp to the logger."""
+    """Write one BGR frame, then hand that same frame and monotonic stamp to the logger.
+
+    ``monotonic_capture_time`` already rejected any stamp that is not on CLOCK_MONOTONIC.
+    The logger records that fact as the monotonic clock flag. Alignment refuses a row
+    whose flag was never written.
+    """
     buffer.write_frame(frame, frame_number, stamp)
-    writer.submit_frame(frame, stamp, frame_number, time.monotonic(), raw_timestamp=stamp)
+    writer.submit_frame(
+        frame, stamp, frame_number, time.monotonic(), raw_timestamp=stamp,
+        buffer_flags=MONOTONIC_CLOCK_FLAGS, driver_sequence=int(frame_number))
 
 
 def _enable_global_time(profile, rs):

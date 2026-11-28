@@ -7,7 +7,7 @@ import pytest
 from camera_utils.camera_server_realsense import (
     HostClockAlignment, color_capture_size, load_cam_config, logger_endpoint_port,
     monotonic_capture_time, publish_captured_frame, serial_for_camera)
-from camera_utils.camera_timing import CameraTimingError
+from camera_utils.camera_timing import MONOTONIC_CLOCK_FLAGS, CameraTimingError
 
 
 def test_config_maps_top_and_wrist_to_the_existing_stream_names(tmp_path):
@@ -79,7 +79,7 @@ def test_published_frame_is_submitted_with_the_shared_memory_stamp():
 
     class Writer:
         def submit_frame(self, image, timestamp, frame_number, frame_ready_time, *, raw_timestamp=None, **kwargs):
-            submitted.append((image, timestamp, frame_number, raw_timestamp))
+            submitted.append((image, timestamp, frame_number, raw_timestamp, kwargs))
 
     buffer = SharedFrameBuffer('realsense_logger_test', 2, 2)
     try:
@@ -91,8 +91,10 @@ def test_published_frame_is_submitted_with_the_shared_memory_stamp():
         Path('/dev/shm', f'{shm_name}.clock.json').unlink(missing_ok=True)
     assert number == 7
     assert stamp == pytest.approx(12.5)
-    image, timestamp, frame_number, raw_timestamp = submitted[0]
+    image, timestamp, frame_number, raw_timestamp, kwargs = submitted[0]
     assert image is frame
     assert timestamp == 12.5
     assert frame_number == 7
     assert raw_timestamp == 12.5
+    assert kwargs['buffer_flags'] == MONOTONIC_CLOCK_FLAGS
+    assert kwargs['driver_sequence'] == 7
